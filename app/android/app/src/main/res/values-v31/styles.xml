@@ -1,0 +1,8 @@
+<resources>
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        <item name="android:windowBackground">@drawable/splash_screen</item>
+        <item name="android:windowSplashScreenBackground">@color/parking_splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/parking_logo_mark</item>
+    </style>
+</resources>

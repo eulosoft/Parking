@@ -1,0 +1,21 @@
+[Unit]
+Description=Parking API
+After=network.target
+
+[Service]
+Type=simple
+User=parking-api
+Group=parking-api
+WorkingDirectory=/opt/parking-api
+EnvironmentFile=/etc/parking-api.env
+ExecStart=/usr/bin/node /opt/parking-api/src/server.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/parking-api
+
+[Install]
+WantedBy=multi-user.target
