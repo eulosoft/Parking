@@ -182,13 +182,12 @@ dispositivo Android antes de entregarlo.
 
 ## Limitaciones conocidas antes de producción
 
-- Las credenciales privadas de entorno y la migración de SQLite a Firestore
-  aún deben configurarse/ejecutarse por el propietario antes de habilitar el
-  servicio.
+- La carga inicial de SQLite a Firestore se completó; el archivo SQLite y un
+  respaldo privado se conservaron. Antes de habilitar el servicio, configura
+  las credenciales privadas de producción en Vercel y valida el flujo de login
+  y operaciones con la API desplegada.
 - iOS no se compila ni valida desde Windows.
 - La sesión móvil aún usa AsyncStorage; se recomienda migrar el token a
   Keychain/Android Keystore antes de una distribución de mayor riesgo.
-- Firebase ya tiene registrado el paquete Android y la API tiene un proyecto
-  Vercel con despliegue inicial. Faltan las credenciales privadas del runtime,
-  las reglas de Firestore y la migración; no se han usado ni publicado
-  credenciales ni se ha ejecutado la migración.
+- El paquete Android está registrado en Firebase y la API tiene un proyecto
+  Vercel con despliegue inicial. No se han publicado credenciales privadas.
