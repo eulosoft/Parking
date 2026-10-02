@@ -157,7 +157,7 @@ contiene la configuración cliente de ese paquete. Cuando la API esté desplegad
 en Vercel, configura la URL HTTPS real en `app/.env.production`:
 
 ```dotenv
-API_URL=https://<dominio-vercel>/api
+API_URL=https://parking-one-coral.vercel.app/api
 ```
 
 El keystore de release de esta estación se guarda fuera del repositorio en
@@ -182,12 +182,13 @@ dispositivo Android antes de entregarlo.
 
 ## Limitaciones conocidas antes de producción
 
-- El dominio Vercel, las credenciales de entorno y la migración de SQLite a
-  Firestore aún deben configurarse/ejecutarse por el propietario antes del
-  despliegue.
+- Las credenciales privadas de entorno y la migración de SQLite a Firestore
+  aún deben configurarse/ejecutarse por el propietario antes de habilitar el
+  servicio.
 - iOS no se compila ni valida desde Windows.
 - La sesión móvil aún usa AsyncStorage; se recomienda migrar el token a
   Keychain/Android Keystore antes de una distribución de mayor riesgo.
-- Firebase, proyecto, dominio/URL de producción y secretos deben ser provistos
-  por el propietario en los entornos de despliegue; no se han usado ni
-  publicado credenciales ni se ha ejecutado la migración.
+- Firebase ya tiene registrado el paquete Android y la API tiene un proyecto
+  Vercel con despliegue inicial. Faltan las credenciales privadas del runtime,
+  las reglas de Firestore y la migración; no se han usado ni publicado
+  credenciales ni se ha ejecutado la migración.
