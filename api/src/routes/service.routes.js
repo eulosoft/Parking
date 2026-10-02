@@ -18,15 +18,22 @@ const router = Router();
 router.use(authenticateToken, requireAdmin);
 
 router.get('/search', asyncHandler(async (req, res) => {
+  if (typeof req.query.q !== 'undefined'
+    && (typeof req.query.q !== 'string' || req.query.q.length > 100)) {
+    return res.status(400).json({ message: 'Search query must be a string of at most 100 characters.' });
+  }
   const result = await searchParkingRecords(req.user.id, req.query.q || '');
   return res.status(200).json(result);
 }));
 
-router.get('/active', (req, res) => {
+router.get('/active', asyncHandler(async (req, res) => {
   const { vehicleId } = req.query;
+  if (typeof vehicleId !== 'undefined' && (typeof vehicleId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(vehicleId))) {
+    return res.status(400).json({ message: 'A valid vehicle ID is required.' });
+  }
   const service = vehicleId
-    ? getActiveServiceForVehicle(req.user.id, vehicleId)
-    : getActiveServiceForUser(req.user.id);
+    ? await getActiveServiceForVehicle(req.user.id, vehicleId)
+    : await getActiveServiceForUser(req.user.id);
 
   if (!service) {
     return res.status(404).json({ message: 'No active service found' });
@@ -43,15 +50,18 @@ router.get('/active', (req, res) => {
       daysRemaining: service.daysRemaining,
     },
   });
-});
+}));
 
-router.get('/summary', (req, res) => {
+router.get('/summary', asyncHandler(async (req, res) => {
   const { vehicleId } = req.query;
+  if (typeof vehicleId !== 'undefined' && (typeof vehicleId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(vehicleId))) {
+    return res.status(400).json({ message: 'A valid vehicle ID is required.' });
+  }
   const summary = vehicleId
-    ? getServiceSummaryForVehicle(req.user.id, vehicleId)
-    : getServiceSummaryForUser(req.user.id);
+    ? await getServiceSummaryForVehicle(req.user.id, vehicleId)
+    : await getServiceSummaryForUser(req.user.id);
   const targetVehicleId = vehicleId || summary.vehicleId;
-  const candidateVehicle = targetVehicleId ? getVehicleById(targetVehicleId) : null;
+  const candidateVehicle = targetVehicleId ? await getVehicleById(targetVehicleId) : null;
   const vehicle = candidateVehicle?.user_id === req.user.id ? candidateVehicle : null;
   const reminderStatus = summary.hasActiveService
     ? getReminderStatus(summary.dateEnd)
@@ -64,7 +74,7 @@ router.get('/summary', (req, res) => {
       ? buildReminderMessage({ daysRemaining: summary.daysRemaining }, vehicle)
       : (vehicle ? `Sin servicio activo para ${vehicle.plate}` : 'Sin servicio activo'),
   });
-});
+}));
 
 router.post('/purchase', (req, res) => {
   return res.status(503).json({
@@ -78,8 +88,8 @@ router.get('/history', asyncHandler(async (req, res) => {
   return res.status(200).json({ services });
 }));
 
-router.get('/reminder', (req, res) => {
-  const service = getActiveServiceForUser(req.user.id);
+router.get('/reminder', asyncHandler(async (req, res) => {
+  const service = await getActiveServiceForUser(req.user.id);
 
   if (!service) {
     return res.status(404).json({ message: 'No active service found' });
@@ -95,6 +105,6 @@ router.get('/reminder', (req, res) => {
       dateEnd: service.dateEnd,
     },
   });
-});
+}));
 
 export default router;

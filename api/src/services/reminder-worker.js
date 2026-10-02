@@ -1,5 +1,5 @@
 import { firebaseAdmin } from '../config/firebase.js';
-import { getVehicleById, queueNotification, store } from '../data/store.js';
+import { getVehicleById, listActiveServices, listDeviceTokensForUser, queueNotification } from '../data/store.js';
 import { buildReminderMessage } from './reminders.js';
 
 let cronTimer = null;
@@ -12,12 +12,11 @@ let cronTimer = null;
 export async function checkAndDispatchReminders() {
   const now = new Date();
   const todayPrefix = now.toISOString().slice(0, 10);
-  const activeServices = store.services.filter((service) => service.status === 'ACTIVE');
+  const activeServices = await listActiveServices();
 
   let checkedCount = 0;
   let dispatchedCount = 0;
   let skippedCount = 0;
-  const dispatchedDetails = [];
 
   for (const service of activeServices) {
     checkedCount += 1;
@@ -26,59 +25,40 @@ export async function checkAndDispatchReminders() {
 
     // Regla de negocio: recordatorio diario cuando faltan 5 días o menos
     if (diffDays > 0 && diffDays <= 5) {
-      const vehicle = getVehicleById(service.vehicle_id);
+      const vehicle = await getVehicleById(service.vehicle_id);
       const plate = vehicle ? vehicle.plate : service.vehicle_id;
 
       // Evitar envíos duplicados en la misma jornada para el mismo vehículo
-      const alreadySentToday = store.notifications.some(
-        (notification) =>
-          notification.user_id === service.user_id &&
-          notification.type === 'REMINDER' &&
-          notification.message.includes(plate) &&
-          String(notification.created_at || '').startsWith(todayPrefix),
-      );
+      const message = buildReminderMessage({ daysRemaining: diffDays }, vehicle);
 
-      if (alreadySentToday) {
+      const queued = await queueNotification({
+        userId: service.user_id,
+        type: 'REMINDER',
+        message,
+        idempotencyKey: `${service.id}_${todayPrefix}`,
+      });
+      if (queued.created === false) {
         skippedCount += 1;
         continue;
       }
 
-      const message = buildReminderMessage({ daysRemaining: diffDays }, vehicle);
+      const tokens = await listDeviceTokensForUser(service.user_id);
 
-      await queueNotification({
-        userId: service.user_id,
-        type: 'REMINDER',
-        message,
-      });
-
-      const tokens = store.deviceTokens
-        .filter((entry) => entry.user_id === service.user_id)
-        .map((entry) => entry.token);
-
-      let pushStatus = 'skipped_no_tokens';
       if (firebaseAdmin && tokens.length > 0) {
         try {
-          const fcmResponse = await firebaseAdmin.messaging().sendEachForMulticast({
+          await firebaseAdmin.messaging().sendEachForMulticast({
             tokens,
             notification: {
               title: `Recordatorio: ${plate}`,
               body: message,
             },
           });
-          pushStatus = `sent_${fcmResponse.successCount}_of_${tokens.length}`;
-        } catch (fcmError) {
-          pushStatus = `error: ${fcmError.message}`;
-          console.error(`FCM reminder dispatch error for ${plate}:`, fcmError);
+        } catch {
+          console.error('FCM reminder dispatch failed.');
         }
       }
 
       dispatchedCount += 1;
-      dispatchedDetails.push({
-        vehicleId: service.vehicle_id,
-        plate,
-        daysRemaining: diffDays,
-        pushStatus,
-      });
     }
   }
 
@@ -87,7 +67,6 @@ export async function checkAndDispatchReminders() {
     checkedCount,
     dispatchedCount,
     skippedCount,
-    details: dispatchedDetails,
   };
 }
 
@@ -108,7 +87,7 @@ export function startReminderCron(intervalMs = 60 * 60 * 1000) {
         console.log(`[ReminderWorker] Ejecución inicial: ${result.dispatchedCount} recordatorios emitidos.`);
       }
     }).catch((err) => {
-      console.error('[ReminderWorker] Error en ejecución inicial:', err);
+      console.error('[ReminderWorker] Initial execution failed:', err?.name || 'Error');
     });
   }, 5000);
 
@@ -119,7 +98,7 @@ export function startReminderCron(intervalMs = 60 * 60 * 1000) {
         console.log(`[ReminderWorker] ${result.dispatchedCount} recordatorios emitidos.`);
       }
     }).catch((err) => {
-      console.error('[ReminderWorker] Error en ciclo:', err);
+      console.error('[ReminderWorker] Cycle failed:', err?.name || 'Error');
     });
   }, intervalMs);
 

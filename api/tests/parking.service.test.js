@@ -13,6 +13,8 @@ import {
 
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'parking-api-test-'));
 process.env.DATABASE_PATH = path.join(temporaryDirectory, 'parking-test.db');
+process.env.NODE_ENV = 'test';
+process.env.STORAGE_DRIVER = 'sqlite';
 
 const { initializeDatabase, run, get, db } = await import('../src/database/db.js');
 const { hashPassword, verifyPassword } = await import('../src/services/password.js');

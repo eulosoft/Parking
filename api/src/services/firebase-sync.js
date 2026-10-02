@@ -1,4 +1,5 @@
 import { firebaseFirestore } from '../config/firebase.js';
+import { isPasswordHash } from './password.js';
 
 const collections = {
   users: 'users',
@@ -21,8 +22,8 @@ export async function mirrorDocument(collection, id, data) {
     await firebaseFirestore.collection(collections[collection] || collection).doc(String(id)).set(clean(data), { merge: true });
     return { synced: true };
   } catch (error) {
-    console.error(`Firestore mirror failed for ${collection}/${id}:`, error.message);
-    return { synced: false, reason: error.message };
+    console.error('Firestore mirror failed.');
+    return { synced: false, reason: 'Firestore write failed' };
   }
 }
 
@@ -35,6 +36,7 @@ export async function mirrorStore(store) {
     ...store.users.map((item) => mirrorDocument('users', item.id, {
       name: item.name,
       email: item.email,
+      ...(isPasswordHash(item.password) ? { password_hash: item.password } : {}),
       createdAt: item.created_at,
     })),
     ...store.vehicles.map((item) => mirrorDocument('vehicles', item.id, {

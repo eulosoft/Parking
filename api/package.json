@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "migrate:firestore": "node scripts/migrate-sqlite-to-firestore.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

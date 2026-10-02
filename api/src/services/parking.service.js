@@ -1,9 +1,15 @@
 export function validatePurchaseInput({ vehicleId, planId, paymentMethod, amount, userId }) {
-  if (!userId || !vehicleId || !planId || !paymentMethod || amount === undefined || amount === null) {
+  if (
+    typeof userId !== 'string' || !userId ||
+    typeof vehicleId !== 'string' || !vehicleId ||
+    typeof planId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(planId) ||
+    typeof paymentMethod !== 'string' || !/^[A-Z_]{2,32}$/.test(paymentMethod) ||
+    amount === undefined || amount === null
+  ) {
     throw new Error('Missing required purchase fields');
   }
 
-  if (typeof amount !== 'number' || Number.isNaN(amount) || amount <= 0) {
+  if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
     throw new Error('Purchase amount must be a positive number');
   }
 

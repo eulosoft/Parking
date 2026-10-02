@@ -8,8 +8,8 @@ público. La app se distribuye como APK, fuera de Play Store.
 ## Componentes
 
 - `app`: React Native 0.81.4, Android APK.
-- `api`: Node.js + Express, SQLite local persistente y Firebase opcional para
-  notificaciones/sincronización.
+- `api`: Node.js + Express; SQLite en desarrollo/tests y Firestore como fuente
+  persistente en producción sobre Vercel.
 - La API es la fuente de verdad para la sesión, vehículos y servicios. El
   administrador puede activar un servicio hasta 365 días (la app ofrece 30 por
   defecto); repetir la activación de un servicio ya activo no crea uno nuevo.
@@ -60,114 +60,134 @@ cd android
 .\gradlew.bat assembleDebug
 ```
 
-## Despliegue de la API en Ubuntu
+## Producción: Firebase Firestore y Vercel
 
-El dominio definitivo aún debe ser registrado/configurado. No se debe compilar
-el APK de producción con una URL de ejemplo: Android release solo acepta HTTPS
-y el hostname debe resolver al servidor real.
+Vercel ejecuta la API en funciones serverless: no se debe usar SQLite ni
+depender de un proceso Node residente. Configura el proyecto de Vercel con
+`api/` como **Root Directory** y Node.js 22.x (22.13 o posterior). El archivo
+`api/vercel.json` enruta las solicitudes al handler Express y agenda diariamente
+`GET /api/jobs/reminders` a las 08:00 UTC. El scheduler administrado de Vercel
+es necesario para ejecutar recordatorios; no existe un cron residente en las
+funciones. Verifica que el plan de Vercel habilite Cron Jobs; si no, configura
+un scheduler administrado externo que invoque la misma ruta diaria con el
+encabezado de autorización configurado. La solicitud de cron requiere el
+secreto Vercel `CRON_SECRET`.
 
-1. **DNS y servidor:** provisiona un VPS Ubuntu con IP pública fija y un dominio
-   (por ejemplo `api.tudominio.com`). Crea un registro DNS `A` hacia la IPv4 y,
-   si el servidor dispone de IPv6 funcional, un registro `AAAA`. Abre solo SSH,
-   HTTP y HTTPS en el firewall. No expongas el puerto Node `4000` a Internet.
-2. **Runtime:** instala Node.js 24 LTS y Nginx. Despliega el código de `api` en
-   `/opt/parking-api` y ejecuta `npm ci --omit=dev`. Crea un usuario dedicado
-   sin acceso interactivo con `sudo useradd --system --home /nonexistent --shell /usr/sbin/nologin parking-api` y permite que lea el código y las dependencias.
-3. **Persistencia y secretos:** crea `/var/lib/parking-api` como directorio
-   propiedad del usuario de servicio usando
-   `sudo install -d -o parking-api -g parking-api -m 750 /var/lib/parking-api`.
-   Crea `/etc/parking-api.env` con permisos `600` y los valores reales:
+1. Crea un proyecto Firebase, habilita Firestore en Native mode y Cloud
+   Messaging. Asigna a la identidad de servicio usada por la API permisos
+   mínimos de Firestore (lectura/escritura) y FCM. La API usa Firebase Admin;
+   reglas cliente de Firestore no sustituyen IAM para esta identidad.
+   Despliega las reglas restrictivas incluidas en `api/firestore.rules` desde
+   `api/` con `firebase deploy --only firestore:rules --project <id-proyecto>`.
+   Las reglas bloquean todo acceso de clientes; el Admin SDK de servidor opera
+   mediante IAM y no está sujeto a esas reglas.
+2. En la configuración de entorno de Vercel, define para Production:
 
    ```dotenv
    NODE_ENV=production
-   PORT=4000
-   JWT_SECRET=<secreto aleatorio de al menos 32 caracteres>
-   DATABASE_PATH=/var/lib/parking-api/parking.db
+   STORAGE_DRIVER=firestore
+   FIREBASE_PROJECT_ID=<id-del-proyecto>
+   FIREBASE_CLIENT_EMAIL=<email-de-la-cuenta-de-servicio>
+   FIREBASE_PRIVATE_KEY=<clave-privada-protegida-de-la-cuenta-de-servicio>
+   JWT_SECRET=<aleatorio-criptograficamente-seguro-de-al-menos-32-caracteres>
    ADMIN_NAME=Administrador
-   ADMIN_EMAIL=<correo real del administrador>
-   ADMIN_PASSWORD=<contraseña aleatoria de 16 a 128 caracteres>
+   ADMIN_EMAIL=<email-real-del-administrador>
+   ADMIN_PASSWORD=<16-a-128-caracteres>
+   CRON_SECRET=<secreto-aleatorio-de-al-menos-32-caracteres>
    CORS_ORIGINS=
-   REMINDER_INTERVAL_MS=3600000
    ```
 
-   Firebase es opcional. Si se usan Firestore/FCM, añade credenciales seguras
-   del entorno de ejecución; nunca guardes la cuenta de servicio en el
-   repositorio. `CORS_ORIGINS` puede quedar vacío para el cliente móvil nativo;
-   si se habilita una interfaz web, indica únicamente sus orígenes HTTPS.
-4. **Proceso:** crea el usuario y el directorio de datos; copia
-   `api/deploy/parking-api.service.example` a
-   `/etc/systemd/system/parking-api.service`. Ajusta la ruta de Node si no es
-   `/usr/bin/node`, luego ejecuta `sudo systemctl daemon-reload`,
-   `sudo systemctl enable --now parking-api` y valida
-   `sudo systemctl status parking-api` y `sudo journalctl -u parking-api`.
-5. **Proxy y TLS:** configura Nginx para el dominio y reenvía
-   `https://api.tudominio.com` a `http://127.0.0.1:4000`, preservando los
-   encabezados `Host`, `X-Real-IP` y `X-Forwarded-For`. Habilita TLS con un
-   certificado válido (por ejemplo, Let's Encrypt/Certbot) y redirección
-   HTTP→HTTPS. `api/deploy/nginx-api.conf.example` contiene el bloque inicial
-   HTTP; reemplaza el hostname, habilita Nginx y, después de que el DNS resuelva
-   al servidor, ejecuta `sudo certbot --nginx --redirect -d api.tudominio.com`.
-   Certbot instalará el certificado y la redirección HTTPS. Verifica
-   `https://api.tudominio.com/health` y
-   `https://api.tudominio.com/api/auth/login`.
-6. **Operación:** comprueba que `/var/lib/parking-api/parking.db` sobrevive a
-   reinicios, establece copias de seguridad periódicas de SQLite y prueba su
-   restauración. Restringe el acceso a los secretos y al respaldo; monitoriza
-   logs, espacio en disco, disponibilidad TLS y uso de recursos. Mantén una
-   sola instancia de API para este SQLite local; para varias instancias se
-   requiere migrar a una base de datos compartida.
+   También se admite `FIREBASE_SERVICE_ACCOUNT_PATH` o Application Default
+   Credentials en entornos compatibles, pero en Vercel se recomienda guardar
+   los valores Firebase como secretos de entorno. En `FIREBASE_PRIVATE_KEY`,
+   configura el valor PEM completo con saltos de línea escapados (`\n`) si el
+   panel no permite saltos reales. Nunca pongas secretos en Git, archivos
+   desplegados, comandos, logs o el APK. `DATABASE_PATH` no se configura en
+   producción. La aplicación falla al iniciar si faltan Firestore, JWT o las
+   credenciales admin requeridas; no degrada silenciosamente a SQLite.
+3. Haz el despliegue y comprueba `/health`, login y operaciones de vehículos y
+   servicios con un cliente autorizado. No hay compra habilitada: el endpoint
+   existente sigue respondiendo `503 PAYMENTS_NOT_CONFIGURED`. Configura
+   `CORS_ORIGINS` solo si existe un cliente web; para el APK nativo puede quedar
+   vacío. El login limita a 10 intentos por IP cada 15 minutos usando Firestore
+   distribuido en producción. Configura una política TTL de Firestore para el
+   campo `expiresAt` de `rateLimits` para limpiar documentos vencidos.
 
-El backend exige `JWT_SECRET`, `DATABASE_PATH`, `ADMIN_EMAIL` y
-`ADMIN_PASSWORD` en producción. Antes de exponerlo, reemplaza todos los valores
-de ejemplo. El secreto del administrador se aplica al arrancar, así que un
-cambio del archivo de entorno también rota su contraseña. El login limita los
-intentos por IP a 10 cada 15 minutos; el proxy Nginx de un salto es el único
-proxy de confianza configurado en producción.
+### Migrar `api/parking.db` preservando los registros
+
+La migración es manual, de solo lectura sobre SQLite, idempotente y no se
+ejecuta durante el despliegue. Haz primero una copia de seguridad privada de
+`api/parking.db`; configura acceso Firebase local de forma segura (sin
+incorporar credenciales al repositorio), y ejecuta desde `api/` apuntando
+`DATABASE_PATH` a la base existente:
+
+```powershell
+$env:STORAGE_DRIVER = "firestore"
+$env:FIREBASE_PROJECT_ID = "<id-del-proyecto>"
+$env:FIREBASE_SERVICE_ACCOUNT_PATH = "C:\secure\firebase-service-account.json"
+$env:DATABASE_PATH = ".\parking.db"
+npm run migrate:firestore
+```
+
+El archivo de servicio debe estar en una ruta privada fuera del repositorio y
+con permisos restringidos. Alternativamente, entrega `FIREBASE_CLIENT_EMAIL` y
+`FIREBASE_PRIVATE_KEY` mediante un gestor de secretos que inyecte variables al
+proceso; no escribas la clave en comandos, historial de shell o logs. El migrador
+usa operaciones create-only por ID: conserva el SQLite original, no sobrescribe
+un documento ya existente para las otras colecciones y al repetirse omite los
+documentos migrados. En `users`, escribe/actualiza únicamente `password_hash`
+para completar perfiles creados por el antiguo mirror. Lee la contraseña local
+solo para reconocer un hash scrypt existente o convertir un plaintext legado a
+scrypt en memoria; nunca sube texto claro, ni lo imprime. El hash scrypt se
+guarda en `users.password_hash` y se verifica server-side con Admin SDK. Imprime
+solo conteos agregados. Migra usuarios, vehículos, servicios, notificaciones y
+tokens. Antes de apuntar producción a Firestore, valida los conteos y relaciones
+con acceso administrativo seguro. No borres el origen hasta completar respaldos
+y validación funcional.
+
+SQLite permanece como opción local y en tests (`STORAGE_DRIVER=sqlite`); no es
+una alternativa de producción en Vercel. Para desarrollo, `npm test` no requiere
+credenciales Firebase ni una cuenta cloud.
 
 ## Compilar y distribuir el APK
 
-Una vez que TLS y DNS estén activos, reemplaza la URL en
-`app/.env.production`:
+El paquete Android de producción es `com.eulosoft.parking` y ya está registrado
+en el proyecto Firebase `parking-9f1ce`; `app/android/app/google-services.json`
+contiene la configuración cliente de ese paquete. Cuando la API esté desplegada
+en Vercel, configura la URL HTTPS real en `app/.env.production`:
 
 ```dotenv
-API_URL=https://api.tudominio.com/api
+API_URL=https://<dominio-vercel>/api
 ```
 
-Para una APK instalable y distribuible de forma privada, configura una clave de
-firma Android protegida fuera del repositorio y proporciona al proceso Gradle
-`ANDROID_UPLOAD_STORE_FILE`, `ANDROID_UPLOAD_STORE_PASSWORD`,
-`ANDROID_UPLOAD_KEY_ALIAS` y `ANDROID_UPLOAD_KEY_PASSWORD`. Conserva una copia
-de seguridad segura del keystore: las actualizaciones deben firmarse con la
-misma clave. Puedes generar una clave PKCS12 así; keytool solicitará las
-contraseñas sin guardarlas en el comando:
-
-```powershell
-keytool -genkeypair -v -storetype PKCS12 -keystore C:\secure\parking-upload.p12 -alias parking-upload -keyalg RSA -keysize 2048 -validity 10000
-```
-
-`ANDROID_UPLOAD_STORE_FILE` debe apuntar a esa ruta absoluta. Sin las cuatro
-variables, Gradle produce un release sin firmar, que no debe distribuirse.
+El keystore de release de esta estación se guarda fuera del repositorio en
+`%USERPROFILE%\.parking-release\parking-upload.p12`; su contraseña se conserva
+cifrada con DPAPI en la misma carpeta y solo la puede descifrar la cuenta de
+Windows que la creó. No borres ni publiques esos archivos: Android exige firmar
+las futuras actualizaciones con la misma clave. Mantén esta cuenta/estación
+disponible y conserva un respaldo seguro del keystore para recuperación.
+El script usa esa contraseña protegida, la pasa a Gradle solo durante la
+compilación y limpia las variables al terminar. Requiere JDK 17 en `PATH`:
 
 ```powershell
 cd app\android
-.\gradlew.bat assembleRelease
+.\build-production-apk.ps1
 ```
 
 El artefacto se genera en
 `app/android/app/build/outputs/apk/release/app-release.apk`. Valida la firma
 con `apksigner verify --verbose --print-certs <ruta-apk>` y prueba instalación,
 inicio de sesión y activación/inactivación contra el dominio real en un
-dispositivo Android antes de entregarlo. El identificador de paquete actual es
-`com.helloworld`; cámbialo por uno controlado por el propietario antes de la
-distribución definitiva.
+dispositivo Android antes de entregarlo.
 
 ## Limitaciones conocidas antes de producción
 
-- El dominio y certificado reales, las credenciales del servidor y la clave de
-  firma no están incluidos; deben proporcionarse/configurarse durante el
+- El dominio Vercel, las credenciales de entorno y la migración de SQLite a
+  Firestore aún deben configurarse/ejecutarse por el propietario antes del
   despliegue.
 - iOS no se compila ni valida desde Windows.
 - La sesión móvil aún usa AsyncStorage; se recomienda migrar el token a
   Keychain/Android Keystore antes de una distribución de mayor riesgo.
-- Firebase es opcional; las funciones que lo necesiten requieren su
-  configuración antes de habilitarse.
+- Firebase, proyecto, dominio/URL de producción y secretos deben ser provistos
+  por el propietario en los entornos de despliegue; no se han usado ni
+  publicado credenciales ni se ha ejecutado la migración.

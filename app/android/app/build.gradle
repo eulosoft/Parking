@@ -91,9 +91,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.helloworld"
+    namespace "com.eulosoft.parking"
     defaultConfig {
-        applicationId "com.helloworld"
+        applicationId "com.eulosoft.parking"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

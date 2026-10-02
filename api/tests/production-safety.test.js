@@ -11,6 +11,7 @@ process.env.JWT_SECRET = 'test-secret-with-at-least-32-characters';
 process.env.ADMIN_EMAIL = 'admin@example.com';
 process.env.ADMIN_PASSWORD = 'admin-password-for-tests-1234';
 process.env.NODE_ENV = 'test';
+process.env.STORAGE_DRIVER = 'sqlite';
 
 const { default: app } = await import('../src/app.js');
 const { initializeDatabase, get, db, run } = await import('../src/database/db.js');

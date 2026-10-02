@@ -1,4 +1,4 @@
-package com.helloworld
+package com.eulosoft.parking
 
 import android.app.Application
 import com.facebook.react.PackageList

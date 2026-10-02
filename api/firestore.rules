@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // The API accesses Firestore only through Firebase Admin SDK, which is
+    // governed by IAM and bypasses client Security Rules. Mobile/web clients
+    // must use the API; this also prevents reading users.password_hash.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

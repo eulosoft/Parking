@@ -1,29 +1,33 @@
 {
-  "project_info": {
-    "project_number": "637562734497",
-    "project_id": "parking-9f1ce",
-    "storage_bucket": "parking-9f1ce.firebasestorage.app"
-  },
-  "client": [
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:637562734497:android:a2b52703a6988481a1ede0",
-        "android_client_info": {
-          "package_name": "com.helloworld"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyA-V2l4IQNsL90nGkuDQKLbNcdAy4fsWeo"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    }
-  ],
-  "configuration_version": "1"
+    "project_info":  {
+                         "project_number":  "637562734497",
+                         "project_id":  "parking-9f1ce",
+                         "storage_bucket":  "parking-9f1ce.firebasestorage.app"
+                     },
+    "client":  [
+                   {
+                       "client_info":  {
+                                           "mobilesdk_app_id":  "1:637562734497:android:9875a8e1ef70aebaa1ede0",
+                                           "android_client_info":  {
+                                                                       "package_name":  "com.eulosoft.parking"
+                                                                   }
+                                       },
+                       "oauth_client":  [
+
+                                        ],
+                       "api_key":  [
+                                       {
+                                           "current_key":  "AIzaSyA-V2l4IQNsL90nGkuDQKLbNcdAy4fsWeo"
+                                       }
+                                   ],
+                       "services":  {
+                                        "appinvite_service":  {
+                                                                  "other_platform_oauth_client":  [
+
+                                                                                                  ]
+                                                              }
+                                    }
+                   }
+               ],
+    "configuration_version":  "1"
 }

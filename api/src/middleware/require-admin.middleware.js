@@ -1,7 +1,8 @@
 import { getUserById } from '../data/store.js';
+import { asyncHandler } from './async-handler.js';
 
-export function requireAdmin(req, res, next) {
-  const user = getUserById(req.user?.id);
+export const requireAdmin = asyncHandler(async (req, res, next) => {
+  const user = await getUserById(req.user?.id);
   if (!user || user.role !== 'ADMIN') {
     return res.status(403).json({ message: 'Administrator access required.' });
   }
@@ -13,4 +14,4 @@ export function requireAdmin(req, res, next) {
     role: user.role,
   };
   return next();
-}
+});

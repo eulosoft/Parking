@@ -1,4 +1,4 @@
-package com.helloworld
+package com.eulosoft.parking
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
