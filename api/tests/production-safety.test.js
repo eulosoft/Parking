@@ -15,7 +15,7 @@ process.env.STORAGE_DRIVER = 'sqlite';
 
 const { default: app } = await import('../src/app.js');
 const { initializeDatabase, get, db, run } = await import('../src/database/db.js');
-const { initializeStore } = await import('../src/data/store.js');
+const { initializeStore, upsertFirebaseUser } = await import('../src/data/store.js');
 const { hashPassword } = await import('../src/services/password.js');
 const { default: jwt } = await import('jsonwebtoken');
 
@@ -81,6 +81,44 @@ test('only the configured administrator can log in and restore a session', async
   });
   assert.equal(registration.status, 404);
   assert.equal(await get('SELECT id FROM users WHERE email = ?', ['public@example.com']), null);
+});
+
+test('Firebase profile synchronization assigns USER and preserves an existing role', async () => {
+  const created = await upsertFirebaseUser({
+    id: 'firebase_new_user',
+    name: 'New Firebase User',
+    email: 'new-firebase@example.com',
+  });
+  assert.equal(created.id, 'firebase_new_user');
+  assert.equal(created.role, 'USER');
+  assert.equal(Object.hasOwn(created, 'password'), false);
+  assert.equal((await get('SELECT role FROM users WHERE id = ?', [created.id])).role, 'USER');
+
+  const linkedAdmin = await upsertFirebaseUser({
+    id: 'firebase_admin_identity',
+    name: 'Firebase Administrator',
+    email: 'ADMIN@example.com',
+  });
+  assert.equal(linkedAdmin.role, 'ADMIN');
+  assert.notEqual(linkedAdmin.id, 'firebase_admin_identity');
+
+  const linkedUser = await upsertFirebaseUser({
+    id: 'firebase_existing_user',
+    name: 'Updated Firebase User',
+    email: 'USER@example.com',
+  });
+  assert.equal(linkedUser.id, 'test_user');
+  assert.equal(linkedUser.role, 'USER');
+  assert.equal(linkedUser.name, 'Updated Firebase User');
+});
+
+test('Firebase login is unavailable until server-side Firebase Auth is configured', async () => {
+  const response = await fetch(`http://127.0.0.1:${port}/api/auth/firebase`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken: 'not-verified-in-tests' }),
+  });
+  assert.equal(response.status, 503);
 });
 
 test('only administrators can manually activate and deactivate vehicle services', async () => {

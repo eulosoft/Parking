@@ -31,6 +31,13 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   multiSet: jest.fn(() => Promise.resolve()),
 }));
 
+jest.mock('../src/services/auth', () => ({
+  signOutFirebase: jest.fn(() => Promise.resolve()),
+  isGoogleSignInConfigured: jest.fn(() => false),
+  isFacebookSignInConfigured: jest.fn(() => false),
+  isMicrosoftSignInConfigured: jest.fn(() => false),
+}));
+
 jest.mock('react-native-config', () => ({
   API_URL: 'https://api.test.example/api',
 }));

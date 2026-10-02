@@ -1,6 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { all, db, get, run } from '../database/db.js';
 import { calculateDaysRemaining, getServiceStatus, validatePurchaseInput } from '../services/parking.service.js';
+import { hashPassword } from '../services/password.js';
 import { mirrorDocument, mirrorStore } from '../services/firebase-sync.js';
 
 const now = () => new Date();
@@ -34,6 +35,42 @@ export function getUserByEmail(email) {
 
 export function getUserById(userId) {
   return store.users.find((user) => user.id === userId) || null;
+}
+
+export async function upsertFirebaseUser({ id, name, email }) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const displayName = String(name || '').trim().slice(0, 120) || normalizedEmail.split('@')[0];
+  if (!id || typeof id !== 'string' || id.length > 128
+    || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 254) {
+    throw new Error('Verified Firebase identity is missing valid profile fields.');
+  }
+
+  let user = await getUserById(id) || await getUserByEmail(normalizedEmail);
+  if (user) {
+    await run('UPDATE users SET name = ?, email = ? WHERE id = ?', [
+      displayName, normalizedEmail, user.id,
+    ]);
+    user.name = displayName;
+    user.email = normalizedEmail;
+  } else {
+    const createdAt = new Date().toISOString();
+    const unusablePasswordHash = await hashPassword(randomBytes(32).toString('hex'));
+    user = {
+      id, name: displayName, email: normalizedEmail, role: 'USER',
+      password: unusablePasswordHash, created_at: createdAt,
+    };
+    await run(
+      'INSERT INTO users (id, name, email, password, role, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [user.id, user.name, user.email, user.password, user.role, user.created_at],
+    );
+    store.users.push(user);
+    await mirrorDocument('users', user.id, {
+      name: user.name, email: user.email, role: user.role, createdAt: user.created_at,
+    });
+  }
+
+  const { password, ...publicUser } = user;
+  return publicUser;
 }
 
 export async function createUser({ id, name, email, password }) {

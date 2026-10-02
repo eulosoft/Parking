@@ -1,4 +1,5 @@
 import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import fs from 'node:fs';
@@ -50,6 +51,10 @@ const firebaseApp = credential
   : null;
 
 export const firebaseAdmin = firebaseApp
-  ? { messaging: () => getMessaging(firebaseApp) }
+  ? {
+      auth: () => getAuth(firebaseApp),
+      messaging: () => getMessaging(firebaseApp),
+    }
   : null;
+export const firebaseAuth = firebaseApp ? getAuth(firebaseApp) : null;
 export const firebaseFirestore = firebaseApp ? getFirestore(firebaseApp) : null;

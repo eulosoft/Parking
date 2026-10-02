@@ -123,6 +123,31 @@ export async function getUserById(id) {
   const { password_hash, ...profile } = user;
   return profile;
 }
+export async function upsertFirebaseUser({ id, name, email }) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const displayName = String(name || '').trim().slice(0, 120) || normalizedEmail.split('@')[0];
+  if (!id || typeof id !== 'string' || id.length > 128
+    || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 254) {
+    throw new Error('Verified Firebase identity is missing valid profile fields.');
+  }
+
+  const byId = await readDoc('users', id);
+  const query = byId ? null : await db.collection('users').where('email', '==', normalizedEmail).limit(1).get();
+  const byEmail = query && !query.empty
+    ? toLegacyShape(query.docs[0].id, query.docs[0].data(), 'users')
+    : null;
+  const existing = byId || byEmail;
+  const user = {
+    id: existing?.id || id,
+    name: displayName,
+    email: normalizedEmail,
+    role: existing?.role || 'USER',
+    created_at: existing?.created_at || now().toISOString(),
+  };
+
+  await db.collection('users').doc(user.id).set(serialize(user), { merge: true });
+  return user;
+}
 export async function createUser({ id, name, email, password }) {
   if (!id || !name || !email || typeof password !== 'string' || password.length < 8 || password.length > 128) {
     throw new Error('Missing or invalid required user fields');

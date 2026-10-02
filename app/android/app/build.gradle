@@ -72,6 +72,8 @@ def releaseSigning = [
     keyPassword: System.getenv("ANDROID_UPLOAD_KEY_PASSWORD")
 ]
 def hasReleaseSigning = releaseSigning.values().every { it }
+def facebookAppId = project.env.get("FACEBOOK_APP_ID") ?: ""
+def facebookClientToken = project.env.get("FACEBOOK_CLIENT_TOKEN") ?: ""
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -96,8 +98,12 @@ android {
         applicationId "com.eulosoft.parking"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.0.1"
+        versionCode 3
+        versionName "1.0.2"
+        manifestPlaceholders = [appAuthRedirectScheme: "com.eulosoft.parking.auth"]
+        resValue "string", "facebook_app_id", facebookAppId
+        resValue "string", "facebook_client_token", facebookClientToken
+        resValue "string", "fb_login_protocol_scheme", "fb${facebookAppId}"
     }
     signingConfigs {
         debug {

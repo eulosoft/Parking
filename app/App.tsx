@@ -12,11 +12,12 @@ import HistoryScreen from './src/screens/HistoryScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import VehiclesScreen from './src/screens/VehiclesScreen';
 import LoadingScreen from './src/components/LoadingScreen';
-import {clearSession, getStoredAuthToken, validateAdminSession, registerDeviceToken} from './src/services/api';
+import {clearSession, getStoredAuthToken, validateSession, registerDeviceToken} from './src/services/api';
+import {signOutFirebase} from './src/services/auth';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; name: string; email: string; role?: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'vehicles' | 'history'>('home');
   const [isReady, setIsReady] = useState(false);
 
@@ -25,7 +26,7 @@ export default function App() {
       try {
         const token = await getStoredAuthToken();
         if (token) {
-          const currentUser = await validateAdminSession();
+          const currentUser = await validateSession();
           setUser(currentUser);
           setIsAuthenticated(true);
         }
@@ -40,7 +41,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || user?.role !== 'ADMIN') {
       return;
     }
 
@@ -70,17 +71,23 @@ export default function App() {
     const unsubscribe = onMessage(getMessaging(), () => {});
 
     return unsubscribe;
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.role]);
 
-  const handleLoginSuccess = (loggedUser: { id: string; name: string; email: string }) => {
+  const handleLoginSuccess = (loggedUser: { id: string; name: string; email: string; role?: string }) => {
     setUser(loggedUser);
     setIsAuthenticated(true);
   };
 
   const handleLogout = async () => {
-    await clearSession();
-    setUser(null);
-    setIsAuthenticated(false);
+    try {
+      await signOutFirebase();
+    } catch (error) {
+      console.warn('Firebase sign-out failed', error);
+    } finally {
+      await clearSession();
+      setUser(null);
+      setIsAuthenticated(false);
+    }
   };
 
   if (!isReady) {
@@ -104,7 +111,14 @@ export default function App() {
       </View>
 
       <View style={styles.screenContainer}>
-        {activeTab === 'home' ? (
+        {user?.role !== 'ADMIN' ? (
+          <View style={styles.pendingAccess}>
+            <Text style={styles.pendingTitle}>Cuenta creada correctamente</Text>
+            <Text style={styles.pendingMessage}>
+              Tu sesión está activa. Las funciones para cuentas de usuario estarán disponibles próximamente.
+            </Text>
+          </View>
+        ) : activeTab === 'home' ? (
           <AdminServicesScreen />
         ) : activeTab === 'vehicles' ? (
           <VehiclesScreen user={user!} />
@@ -113,31 +127,33 @@ export default function App() {
         )}
       </View>
 
-      <View style={styles.bottomBar}>
-        <Pressable
-          onPress={() => setActiveTab('home')}
-          style={[styles.bottomTab, activeTab === 'home' && styles.bottomTabActive]}
-        >
-          <Text style={styles.tabIcon}>🏠</Text>
-          <Text style={[styles.tabText, activeTab === 'home' && styles.tabTextActive]}>Inicio</Text>
-        </Pressable>
+      {user?.role === 'ADMIN' ? (
+        <View style={styles.bottomBar}>
+          <Pressable
+            onPress={() => setActiveTab('home')}
+            style={[styles.bottomTab, activeTab === 'home' && styles.bottomTabActive]}
+          >
+            <Text style={styles.tabIcon}>🏠</Text>
+            <Text style={[styles.tabText, activeTab === 'home' && styles.tabTextActive]}>Inicio</Text>
+          </Pressable>
 
-        <Pressable
-          onPress={() => setActiveTab('vehicles')}
-          style={[styles.bottomTab, activeTab === 'vehicles' && styles.bottomTabActive]}
-        >
-          <Text style={styles.tabIcon}>🚗</Text>
-          <Text style={[styles.tabText, activeTab === 'vehicles' && styles.tabTextActive]}>Vehículos</Text>
-        </Pressable>
+          <Pressable
+            onPress={() => setActiveTab('vehicles')}
+            style={[styles.bottomTab, activeTab === 'vehicles' && styles.bottomTabActive]}
+          >
+            <Text style={styles.tabIcon}>🚗</Text>
+            <Text style={[styles.tabText, activeTab === 'vehicles' && styles.tabTextActive]}>Vehículos</Text>
+          </Pressable>
 
-        <Pressable
-          onPress={() => setActiveTab('history')}
-          style={[styles.bottomTab, activeTab === 'history' && styles.bottomTabActive]}
-        >
-          <Text style={styles.tabIcon}>📄</Text>
-          <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>Historial</Text>
-        </Pressable>
-      </View>
+          <Pressable
+            onPress={() => setActiveTab('history')}
+            style={[styles.bottomTab, activeTab === 'history' && styles.bottomTabActive]}
+          >
+            <Text style={styles.tabIcon}>📄</Text>
+            <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>Historial</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -149,6 +165,25 @@ const styles = StyleSheet.create({
   },
   screenContainer: {
     flex: 1,
+  },
+  pendingAccess: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  pendingTitle: {
+    color: '#0f172a',
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  pendingMessage: {
+    color: '#475467',
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 12,
+    textAlign: 'center',
   },
   userBar: {
     flexDirection: 'row',

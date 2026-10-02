@@ -60,14 +60,49 @@ export async function setCurrentUser(user) {
   await writeJSON('parking_user', user);
 }
 
-export async function validateAdminSession() {
+export async function validateSession() {
   const response = await fetch(`${API_BASE_URL}/auth/me`, {
     headers: await defaultHeaders(),
   });
   const data = await response.json();
-  if (!response.ok || data.user?.role !== 'ADMIN') {
-    throw new Error(data.message || 'La sesión no corresponde a un administrador.');
+  if (!response.ok || !data.user?.id || !data.user?.role) {
+    throw new Error(data.message || 'La sesión no es válida.');
   }
+  await setCurrentUser(data.user);
+  return data.user;
+}
+
+export async function exchangeFirebaseToken(idToken) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/firebase`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({idToken}),
+    });
+  } catch (error) {
+    if (error instanceof TypeError || error?.message === 'Network request failed') {
+      throw new Error(`No hay conexión con el servidor (${API_BASE_URL}). Verifica que la API esté ejecutándose.`);
+    }
+    throw error;
+  }
+
+  const rawBody = await response.text();
+  let data = {};
+  try {
+    data = rawBody ? JSON.parse(rawBody) : {};
+  } catch (error) {
+    data = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(data.message || `No se pudo completar la acción (HTTP ${response.status})`);
+  }
+  if (!data.token || !data.user) {
+    throw new Error('La respuesta del servidor no incluyó la sesión. Intenta de nuevo.');
+  }
+
+  await setAuthToken(data.token);
   await setCurrentUser(data.user);
   return data.user;
 }
