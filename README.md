@@ -55,14 +55,15 @@ que ejecuta la API. Las compilaciones release requieren HTTPS.
 
 #### Autenticación de la app
 
-Firebase Authentication debe estar habilitado en el proyecto Firebase
-`parking-9f1ce`. Activa Email/Password y configura Google, Facebook y Microsoft
-en Authentication > Sign-in method. Los proveedores sociales requieren además
-sus aplicaciones OAuth asociadas:
+En el proyecto Firebase `parking-9f1ce`, Email/Password y Google están
+habilitados. Facebook y Microsoft quedan pendientes de sus aplicaciones OAuth.
+Al conectar otro proyecto Firebase, habilita los proveedores que vayas a usar
+en Authentication > Sign-in method:
 
 - `GOOGLE_WEB_CLIENT_ID`: cliente OAuth de tipo Web configurado en Firebase;
-  registra también el SHA-1 y SHA-256 del certificado Android de release en la
-  app Android de Firebase y descarga el `google-services.json` actualizado.
+  el ejemplo de producción contiene el cliente actual. Registra el SHA-1 y
+  SHA-256 del certificado Android de release en la app Android de Firebase y
+  descarga el `google-services.json` actualizado.
 - `FACEBOOK_APP_ID` y `FACEBOOK_CLIENT_TOKEN`: valores públicos del proyecto de
   Meta, también registrados en el proveedor Facebook de Firebase.
 - `MICROSOFT_CLIENT_ID` y `MICROSOFT_TENANT_ID`: ID de aplicación y tenant
