@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$javaVersion = & java -version 2>&1 | Out-String
+$javaVersion = & $env:ComSpec /c 'java -version 2>&1' | Out-String
 if ($javaVersion -notmatch 'version "17\.') {
   throw 'Android release builds require JDK 17 on PATH.'
 }
