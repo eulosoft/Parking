@@ -9,7 +9,7 @@ import {
   View,
   Image,
 } from 'react-native';
-import {API_BASE_URL, setAuthToken, setCurrentUser} from '../services/api';
+import {loginAdmin} from '../services/api';
 
 type LoginScreenProps = {
   onLoginSuccess: (user: { id: string; name: string; email: string }) => void;
@@ -26,37 +26,10 @@ export default function LoginScreen({onLoginSuccess}: LoginScreenProps) {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({email, password}),
-      });
-
-      const rawBody = await response.text();
-      let data: any = {};
-      try {
-        data = rawBody ? JSON.parse(rawBody) : {};
-      } catch (parseError) {
-        data = {};
-      }
-
-      if (!response.ok) {
-        throw new Error(data.message || `No se pudo completar la acción (HTTP ${response.status})`);
-      }
-
-      if (!data.token || !data.user) {
-        throw new Error('La respuesta del servidor no incluyó la sesión. Intenta de nuevo.');
-      }
-
-      await setAuthToken(data.token);
-      await setCurrentUser(data.user);
-      onLoginSuccess(data.user);
+      const user = await loginAdmin(email, password);
+      onLoginSuccess(user);
     } catch (e: any) {
-      const message =
-        e?.message === 'Failed to fetch' || e?.message === 'Network request failed'
-          ? `No hay conexión con el servidor (${API_BASE_URL}). Verifica que la API esté ejecutándose.`
-          : e?.message || 'Error al autenticar';
-      setError(message);
+      setError(e?.message || 'Error al autenticar');
     } finally {
       setLoading(false);
     }
