@@ -15,6 +15,9 @@ fuera de Play Store.
   administrador puede activar un servicio hasta 365 días (la app ofrece 30 por
   defecto). La opción de renovar extiende 30 días el vencimiento vigente;
   activar de nuevo un servicio activo mediante el endpoint de estado no lo duplica.
+  Desde el historial administrativo puede consultar el detalle y editar el
+  vehículo, estado, fechas, plan e importe de cada servicio; no se permite
+  asignar dos servicios activos al mismo vehículo.
 
 ## Desarrollo local
 

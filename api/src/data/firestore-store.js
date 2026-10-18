@@ -207,8 +207,10 @@ export async function listAdminServiceHistory() {
     const owner = userMap.get(service.user_id);
     return {
       ...service, userId: service.user_id, vehicleId: service.vehicle_id,
-      vehiclePlate: vehicle?.plate || 'Vehículo eliminado', vehicleType: service.vehicle_type,
-      planId: service.plan_id, paymentMethod: service.payment_method, dateStart: service.date_start,
+      vehiclePlate: vehicle?.plate || 'Vehículo eliminado', vehicleType: vehicle?.type || service.vehicle_type,
+      vehicleBrand: vehicle?.brand || '', vehicleModel: vehicle?.model || '',
+      planId: service.plan_id, paymentMethod: service.payment_method, amount: service.amount,
+      createdAt: service.created_at, dateStart: service.date_start,
       dateEnd: service.date_end, owner: vehicle ? {
         name: vehicle.owner_name || owner?.name || '', email: vehicle.owner_email || owner?.email || '',
       } : null, daysRemaining: calculateDaysRemaining(service.date_end, now()),
@@ -418,6 +420,111 @@ export async function renewVehicleService(vehicleId, days = 30) {
       dateStart,
       dateEnd,
       daysRemaining: days,
+    };
+  });
+}
+
+export async function updateAdminService(serviceId, updates) {
+  const servicesRef = db.collection('services');
+  const serviceRef = servicesRef.doc(String(serviceId));
+
+  return db.runTransaction(async (transaction) => {
+    const serviceDoc = await transaction.get(serviceRef);
+    if (!serviceDoc.exists) throw new Error('Service not found.');
+    const service = toLegacyShape(serviceDoc.id, serviceDoc.data(), 'services');
+    const previousVehicleId = String(service.vehicle_id);
+    const nextVehicleId = String(updates.vehicleId);
+    const nextVehicleRef = db.collection('vehicles').doc(nextVehicleId);
+    const previousStateRef = db.collection('serviceState').doc(previousVehicleId);
+    const nextStateRef = db.collection('serviceState').doc(nextVehicleId);
+    const sameVehicle = previousVehicleId === nextVehicleId;
+    const [nextVehicleDoc, previousStateDoc, nextStateDoc] = await Promise.all([
+      transaction.get(nextVehicleRef),
+      transaction.get(previousStateRef),
+      sameVehicle ? transaction.get(previousStateRef) : transaction.get(nextStateRef),
+    ]);
+    if (!nextVehicleDoc.exists) throw new Error('Vehicle not found.');
+
+    const readVehicleServices = async (vehicleId) => {
+      const [canonical, legacy] = await Promise.all([
+        transaction.get(servicesRef.where('vehicle_id', '==', vehicleId)),
+        transaction.get(servicesRef.where('vehicleId', '==', vehicleId)),
+      ]);
+      return [...new Map([...canonical.docs, ...legacy.docs].map((doc) => [doc.id, doc])).values()]
+        .map((doc) => toLegacyShape(doc.id, doc.data(), 'services'));
+    };
+    const previousServices = await readVehicleServices(previousVehicleId);
+    const nextServices = sameVehicle ? previousServices : await readVehicleServices(nextVehicleId);
+    const nextVehicle = toLegacyShape(nextVehicleDoc.id, nextVehicleDoc.data(), 'vehicles');
+    const timestamp = now();
+    const dateStart = new Date(updates.dateStart).toISOString();
+    const dateEnd = new Date(updates.dateEnd).toISOString();
+    const active = updates.status === 'ACTIVE' && new Date(dateStart) <= timestamp && new Date(dateEnd) > timestamp;
+    if (updates.status === 'ACTIVE' && !active) {
+      throw new Error('An active service must have a current start date and a future end date.');
+    }
+    if (active && nextServices.some((candidate) =>
+      candidate.id !== service.id && candidate.status === 'ACTIVE' &&
+      new Date(candidate.date_start) <= timestamp &&
+      new Date(candidate.date_end) > timestamp)) {
+      throw new Error('Vehicle already has an active service.');
+    }
+
+    const updated = {
+      ...service,
+      user_id: nextVehicle.user_id ?? nextVehicle.ownerId,
+      vehicle_id: nextVehicle.id,
+      vehicle_type: nextVehicle.type,
+      plan_id: updates.planId,
+      amount: updates.amount,
+      status: updates.status,
+      date_start: dateStart,
+      date_end: dateEnd,
+    };
+    const writeState = (vehicleId, stateDoc, services) => {
+      const nextList = services.filter((candidate) => candidate.id !== service.id);
+      if (vehicleId === nextVehicleId) nextList.push(updated);
+      nextList.sort(byDateStart);
+      const latest = nextList[0] || null;
+      const activeService = nextList.find((candidate) =>
+        candidate.status === 'ACTIVE' && new Date(candidate.date_start) <= timestamp &&
+        new Date(candidate.date_end) > timestamp) || null;
+      const state = {
+        vehicleId,
+        activeServiceId: activeService?.id || null,
+        latestServiceId: latest?.id || null,
+        updatedAt: timestamp.toISOString(),
+      };
+      if (stateDoc.exists) transaction.set(stateDoc.ref, state, { merge: true });
+      else transaction.create(stateDoc.ref, state);
+    };
+
+    transaction.update(serviceRef, {
+      user_id: updated.user_id,
+      vehicle_id: updated.vehicle_id,
+      vehicle_type: updated.vehicle_type,
+      plan_id: updated.plan_id,
+      amount: updated.amount,
+      status: updated.status,
+      date_start: updated.date_start,
+      date_end: updated.date_end,
+    });
+    writeState(previousVehicleId, previousStateDoc, previousServices);
+    if (!sameVehicle) writeState(nextVehicleId, nextStateDoc, nextServices);
+
+    const daysRemaining = calculateDaysRemaining(dateEnd, timestamp);
+    return {
+      id: service.id,
+      vehicleId: updated.vehicle_id,
+      vehicleType: updated.vehicle_type,
+      status: active ? getServiceStatus(daysRemaining) : updated.status,
+      isActive: active,
+      dateStart,
+      dateEnd,
+      planId: updated.plan_id,
+      paymentMethod: updated.payment_method,
+      amount: updated.amount,
+      daysRemaining,
     };
   });
 }

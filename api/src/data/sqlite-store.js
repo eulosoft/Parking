@@ -132,9 +132,13 @@ export function listAdminServiceHistory() {
         userId: service.user_id,
         vehicleId: service.vehicle_id,
         vehiclePlate: vehicle?.plate || 'Vehículo eliminado',
-        vehicleType: service.vehicle_type,
+        vehicleType: vehicle?.type || service.vehicle_type,
+        vehicleBrand: vehicle?.brand || '',
+        vehicleModel: vehicle?.model || '',
         planId: service.plan_id,
         paymentMethod: service.payment_method,
+        amount: service.amount,
+        createdAt: service.created_at,
         dateStart: service.date_start,
         dateEnd: service.date_end,
         owner: vehicle
@@ -333,6 +337,107 @@ export async function renewVehicleService(vehicleId, days = 30) {
     isActive: true,
     dateStart: existingActiveService.date_start,
     dateEnd,
+    daysRemaining,
+  };
+}
+
+export async function updateAdminService(serviceId, updates) {
+  const current = await get('SELECT * FROM services WHERE id = ?', [serviceId]);
+  if (!current) {
+    throw new Error('Service not found.');
+  }
+  const vehicle = await get('SELECT * FROM vehicles WHERE id = ?', [updates.vehicleId]);
+  if (!vehicle) {
+    throw new Error('Vehicle not found.');
+  }
+
+  const start = new Date(updates.dateStart);
+  const end = new Date(updates.dateEnd);
+  const timestamp = now();
+  const isActive = updates.status === 'ACTIVE' && start <= timestamp && end > timestamp;
+  if (updates.status === 'ACTIVE' && !isActive) {
+    throw new Error('An active service must have a current start date and a future end date.');
+  }
+  if (isActive) {
+    const conflictingService = await get(
+      "SELECT id FROM services WHERE vehicle_id = ? AND status = 'ACTIVE' AND date_start <= ? AND date_end > ? AND id != ?",
+      [vehicle.id, timestamp.toISOString(), timestamp.toISOString(), serviceId],
+    );
+    if (conflictingService) {
+      throw new Error('Vehicle already has an active service.');
+    }
+  }
+
+  const updated = {
+    ...current,
+    user_id: vehicle.user_id,
+    vehicle_id: vehicle.id,
+    vehicle_type: vehicle.type,
+    plan_id: updates.planId,
+    amount: updates.amount,
+    status: updates.status,
+    date_start: start.toISOString(),
+    date_end: end.toISOString(),
+  };
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (isActive) {
+      const conflictingService = await get(
+        "SELECT id FROM services WHERE vehicle_id = ? AND status = 'ACTIVE' AND date_end > ? AND id != ?",
+        [vehicle.id, timestamp.toISOString(), serviceId],
+      );
+      if (conflictingService) {
+        throw new Error('Vehicle already has an active service.');
+      }
+    }
+    await run(
+      'UPDATE services SET user_id = ?, vehicle_id = ?, vehicle_type = ?, plan_id = ?, amount = ?, status = ?, date_start = ?, date_end = ? WHERE id = ?',
+      [
+        updated.user_id,
+        updated.vehicle_id,
+        updated.vehicle_type,
+        updated.plan_id,
+        updated.amount,
+        updated.status,
+        updated.date_start,
+        updated.date_end,
+        serviceId,
+      ],
+    );
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+
+  const serviceIndex = store.services.findIndex((service) => service.id === serviceId);
+  if (serviceIndex >= 0) {
+    store.services[serviceIndex] = updated;
+  }
+  await mirrorDocument('services', serviceId, {
+    ownerId: updated.user_id,
+    vehicleId: updated.vehicle_id,
+    vehicleType: updated.vehicle_type,
+    planId: updated.plan_id,
+    paymentMethod: updated.payment_method,
+    amount: updated.amount,
+    status: updated.status,
+    dateStart: updated.date_start,
+    dateEnd: updated.date_end,
+  });
+
+  const daysRemaining = calculateDaysRemaining(updated.date_end, timestamp);
+  return {
+    id: serviceId,
+    vehicleId: updated.vehicle_id,
+    vehicleType: updated.vehicle_type,
+    status: isActive ? getServiceStatus(daysRemaining) : updated.status,
+    isActive,
+    dateStart: updated.date_start,
+    dateEnd: updated.date_end,
+    planId: updated.plan_id,
+    paymentMethod: updated.payment_method,
+    amount: updated.amount,
     daysRemaining,
   };
 }

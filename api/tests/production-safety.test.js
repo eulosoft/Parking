@@ -226,6 +226,82 @@ test('only administrators can manually activate and deactivate vehicle services'
   const historyItem = (await historyResponse.json()).services[0];
   assert.equal(historyItem.vehiclePlate, 'ABC123');
   assert.equal(historyItem.owner.email, 'owner@example.com');
+  assert.equal(historyItem.paymentMethod, 'ADMIN');
+  assert.equal(historyItem.amount, 0);
+
+  const secondVehicleResponse = await fetch(`http://127.0.0.1:${port}/api/admin/vehicles`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${adminToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      type: 'MOTORCYCLE',
+      plate: 'xyz789',
+      ownerName: 'Test Owner',
+      ownerEmail: 'owner@example.com',
+    }),
+  });
+  assert.equal(secondVehicleResponse.status, 201);
+  const secondVehicleId = (await secondVehicleResponse.json()).vehicle.id;
+  const serviceUpdate = {
+    vehicleId: secondVehicleId,
+    status: 'ACTIVE',
+    dateStart: new Date(Date.now() - 86400000).toISOString(),
+    dateEnd: new Date(Date.now() + 40 * 86400000).toISOString(),
+    planId: 'annual-admin',
+    amount: 125000,
+  };
+  const editService = (updates = serviceUpdate, serviceId = firstService.id, token = adminToken) =>
+    fetch(`http://127.0.0.1:${port}/api/admin/services/${serviceId}`, {
+      method: 'PATCH',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updates),
+    });
+
+  assert.equal((await editService(serviceUpdate, firstService.id, null)).status, 401);
+  assert.equal(
+    (await editService(
+      serviceUpdate,
+      firstService.id,
+      jwt.sign({ sub: 'test_user' }, process.env.JWT_SECRET),
+    )).status,
+    403,
+  );
+  assert.equal((await editService({...serviceUpdate, amount: -1})).status, 400);
+  const editedResponse = await editService();
+  assert.equal(editedResponse.status, 200);
+  const editedService = (await editedResponse.json()).service;
+  assert.equal(editedService.vehicleId, secondVehicleId);
+  assert.equal(editedService.planId, 'annual-admin');
+  assert.equal(editedService.amount, 125000);
+  assert.equal(editedService.isActive, true);
+  assert.equal((await get('SELECT vehicle_id, plan_id, amount FROM services WHERE id = ?', [firstService.id])).vehicle_id, secondVehicleId);
+
+  const vehiclesAfterEdit = await (await fetch(
+    `http://127.0.0.1:${port}/api/admin/vehicles`,
+    { headers: { Authorization: `Bearer ${adminToken}` } },
+  )).json();
+  assert.equal(vehiclesAfterEdit.vehicles.find((item) => item.id === secondVehicleId).service.id, firstService.id);
+  const editHistory = await (await fetch(
+    `http://127.0.0.1:${port}/api/admin/services/history`,
+    { headers: { Authorization: `Bearer ${adminToken}` } },
+  )).json();
+  const editedHistoryItem = editHistory.services.find((item) => item.id === firstService.id);
+  assert.equal(editedHistoryItem.vehiclePlate, 'XYZ789');
+  assert.equal(editedHistoryItem.amount, 125000);
+  assert.equal(editedHistoryItem.planId, 'annual-admin');
+
+  const restoredService = await editService({
+    ...serviceUpdate,
+    vehicleId,
+    planId: 'manual_admin',
+    amount: 0,
+  });
+  assert.equal(restoredService.status, 200);
 
   const deactivate = await fetch(
     `http://127.0.0.1:${port}/api/admin/vehicles/${vehicleId}/service`,
