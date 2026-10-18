@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
-import { getUserByEmail, getUserById, upsertFirebaseUser } from '../data/store.js';
+import {
+  getUserByEmail,
+  getUserById,
+  isFirebaseUserProvisioned,
+  upsertFirebaseUser,
+} from '../data/store.js';
 import { JWT_SECRET } from '../config/security.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 import { asyncHandler } from '../middleware/async-handler.js';
@@ -101,6 +106,11 @@ router.post('/firebase', firebaseLoginRateLimit, asyncHandler(async (req, res) =
   if (!identity.uid || identity.email_verified !== true
     || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(403).json({ message: 'Verify your email before accessing Parking.' });
+  }
+  if (!await isFirebaseUserProvisioned({ id: identity.uid, email })) {
+    return res.status(403).json({
+      message: 'An administrator must create this account before it can access Parking.',
+    });
   }
 
   const user = await upsertFirebaseUser({

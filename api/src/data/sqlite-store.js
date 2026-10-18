@@ -37,6 +37,12 @@ export function getUserById(userId) {
   return store.users.find((user) => user.id === userId) || null;
 }
 
+export function isFirebaseUserProvisioned({ id, email }) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  return store.users.some((user) =>
+    user.id === id || user.email?.trim().toLowerCase() === normalizedEmail);
+}
+
 export async function upsertFirebaseUser({ id, name, email }) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   const displayName = String(name || '').trim().slice(0, 120) || normalizedEmail.split('@')[0];

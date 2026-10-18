@@ -15,7 +15,11 @@ process.env.STORAGE_DRIVER = 'sqlite';
 
 const { default: app } = await import('../src/app.js');
 const { initializeDatabase, get, db, run } = await import('../src/database/db.js');
-const { initializeStore, upsertFirebaseUser } = await import('../src/data/store.js');
+const {
+  initializeStore,
+  isFirebaseUserProvisioned,
+  upsertFirebaseUser,
+} = await import('../src/data/store.js');
 const { hashPassword } = await import('../src/services/password.js');
 const { default: jwt } = await import('jsonwebtoken');
 
@@ -84,6 +88,9 @@ test('only the configured administrator can log in and restore a session', async
 });
 
 test('Firebase profile synchronization assigns USER and preserves an existing role', async () => {
+  assert.equal(await isFirebaseUserProvisioned({ email: 'user@example.com' }), true);
+  assert.equal(await isFirebaseUserProvisioned({ email: 'unapproved@example.com' }), false);
+
   const created = await upsertFirebaseUser({
     id: 'firebase_new_user',
     name: 'New Firebase User',
@@ -110,6 +117,44 @@ test('Firebase profile synchronization assigns USER and preserves an existing ro
   assert.equal(linkedUser.id, 'test_user');
   assert.equal(linkedUser.role, 'USER');
   assert.equal(linkedUser.name, 'Updated Firebase User');
+});
+
+test('account creation and password reset actions require an administrator', async () => {
+  const userToken = jwt.sign({ sub: 'test_user' }, process.env.JWT_SECRET);
+  const accountBody = JSON.stringify({ name: 'Managed User', email: 'managed@example.com' });
+  const resetBody = JSON.stringify({ email: 'user@example.com' });
+
+  for (const [path, body] of [
+    ['/api/admin/accounts', accountBody],
+    ['/api/admin/accounts/password-reset', resetBody],
+  ]) {
+    const noToken = await fetch(`http://127.0.0.1:${port}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    assert.equal(noToken.status, 401);
+
+    const nonAdmin = await fetch(`http://127.0.0.1:${port}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+        'Content-Type': 'application/json',
+      },
+      body,
+    });
+    assert.equal(nonAdmin.status, 403);
+
+    const admin = await fetch(`http://127.0.0.1:${port}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body,
+    });
+    assert.equal(admin.status, 503);
+  }
 });
 
 test('Firebase login is unavailable until server-side Firebase Auth is configured', async () => {

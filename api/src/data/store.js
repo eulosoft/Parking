@@ -14,6 +14,7 @@ export const store = backend.store;
 export const initializeStore = (...args) => backend.initializeStore(...args);
 export const getUserByEmail = (...args) => backend.getUserByEmail(...args);
 export const getUserById = (...args) => backend.getUserById(...args);
+export const isFirebaseUserProvisioned = (...args) => backend.isFirebaseUserProvisioned(...args);
 export const upsertFirebaseUser = (...args) => backend.upsertFirebaseUser(...args);
 export const createUser = (...args) => backend.createUser(...args);
 export const getVehicleById = (...args) => backend.getVehicleById(...args);

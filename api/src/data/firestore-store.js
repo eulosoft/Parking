@@ -123,6 +123,13 @@ export async function getUserById(id) {
   const { password_hash, ...profile } = user;
   return profile;
 }
+export async function isFirebaseUserProvisioned({ id, email }) {
+  if (id && await readDoc('users', id)) return true;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) return false;
+  const matches = await db.collection('users').where('email', '==', normalizedEmail).limit(1).get();
+  return !matches.empty;
+}
 export async function upsertFirebaseUser({ id, name, email }) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   const displayName = String(name || '').trim().slice(0, 120) || normalizedEmail.split('@')[0];

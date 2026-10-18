@@ -1,9 +1,8 @@
 # Parking
 
 Aplicación móvil de administración de parqueadero y API. El administrador
-registra vehículos y activa o inactiva manualmente sus servicios. La app ahora
-incluye autenticación pública con Firebase; las funciones de usuario final aún
-no están disponibles. No se procesan pagos. La app se distribuye como APK,
+registra vehículos, gestiona las cuentas de acceso y activa o inactiva
+manualmente sus servicios. No se procesan pagos. La app se distribuye como APK,
 fuera de Play Store.
 
 ## Componentes
@@ -61,32 +60,27 @@ que ejecuta la API. Las compilaciones release requieren HTTPS.
 
 #### Autenticación de la app
 
-En el proyecto Firebase `parking-9f1ce`, Email/Password y Google están
-habilitados. Facebook y Microsoft quedan pendientes de sus aplicaciones OAuth.
-Al conectar otro proyecto Firebase, habilita los proveedores que vayas a usar
-en Authentication > Sign-in method:
+El login permite correo/contraseña y Google. Las cuentas no se pueden crear ni
+restablecer desde la pantalla de acceso: un administrador autenticado las
+gestiona en la pestaña **Cuentas**. El backend solo acepta identidades Firebase
+que ya tengan un perfil provisionado, y exige correo verificado antes de emitir
+una sesión Parking. Habilita Email/Password y Google en Firebase Authentication
+> Sign-in method.
 
 - `GOOGLE_WEB_CLIENT_ID`: cliente OAuth de tipo Web configurado en Firebase;
   el ejemplo de producción contiene el cliente actual. Registra el SHA-1 y
   SHA-256 del certificado Android de release en la app Android de Firebase y
   descarga el `google-services.json` actualizado.
-- `FACEBOOK_APP_ID` y `FACEBOOK_CLIENT_TOKEN`: valores públicos del proyecto de
-  Meta, también registrados en el proveedor Facebook de Firebase.
-- `MICROSOFT_CLIENT_ID` y `MICROSOFT_TENANT_ID`: ID de aplicación y tenant
-  configurados en el proveedor Microsoft de Firebase. Registra
-  `com.eulosoft.parking.auth://oauth2redirect` como URI de retorno móvil en
-  Microsoft Entra ID.
 
-Los tres proveedores y sus dominios/URI de retorno deben estar habilitados
-tanto en la consola Firebase como en la consola OAuth correspondiente. Estos
-valores se leen de `.env.development` y `.env.production`; los ejemplos están
-vacíos intencionalmente. No pongas secretos OAuth de cliente/servidor en la app.
-El usuario debe verificar su correo antes de recibir una sesión Parking. El
-restablecimiento envía un enlace usando Firebase Authentication. El endpoint
-backend `POST /api/auth/firebase` verifica el ID token y entrega la sesión JWT;
-no habilites esa ruta en producción hasta que Firebase Authentication esté
-configurado. El acceso administrativo previo se conserva en la opción
-“Acceso de administrador”.
+El administrador crea cuentas desde la app; al iniciar sesión por primera vez
+el usuario debe verificar su correo. Para cambiar una contraseña, el
+administrador genera un enlace de Firebase desde **Cuentas** y lo comparte de
+forma segura: el backend no envía correos. Las operaciones `POST
+/api/admin/accounts` y `POST /api/admin/accounts/password-reset` requieren un
+token de administrador y Firebase Admin configurado. `POST /api/auth/firebase`
+verifica el ID token y que el perfil haya sido provisionado antes de entregar
+la sesión JWT. El acceso administrativo con correo y contraseña se conserva en
+la opción “Acceso de administrador”.
 
 ```powershell
 npm test -- --runInBand
