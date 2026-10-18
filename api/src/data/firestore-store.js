@@ -218,6 +218,57 @@ export async function listAdminServiceHistory() {
   }).sort(byDateStart);
 }
 
+export async function listOwnerServiceReport() {
+  const [vehicles, services, users] = await Promise.all([
+    readAll('vehicles'),
+    readAll('services'),
+    readAll('users'),
+  ]);
+  const userMap = new Map(users.map((user) => [user.id, user]));
+  const owners = new Map();
+  const vehicleOwners = new Map();
+
+  for (const vehicle of vehicles) {
+    const account = userMap.get(vehicle.user_id);
+    const name = String(vehicle.owner_name || account?.name || '').trim();
+    const email = String(vehicle.owner_email || account?.email || '').trim().toLowerCase();
+    const key = email || `unidentified:${vehicle.id}`;
+    let owner = owners.get(key);
+    if (!owner) {
+      owner = {
+        ownerId: key,
+        ownerName: name || 'Propietario sin nombre',
+        ownerEmail: email || null,
+        vehicleCount: 0,
+        serviceCount: 0,
+        activeServiceCount: 0,
+        inactiveServiceCount: 0,
+      };
+      owners.set(key, owner);
+    } else if (!owner.ownerName && name) {
+      owner.ownerName = name;
+    }
+    owner.vehicleCount += 1;
+    vehicleOwners.set(vehicle.id, key);
+  }
+
+  const timestamp = now();
+  for (const service of services) {
+    const key = vehicleOwners.get(service.vehicle_id);
+    if (!key) continue;
+    const owner = owners.get(key);
+    const isActive = service.status === 'ACTIVE' &&
+      new Date(service.date_start) <= timestamp &&
+      new Date(service.date_end) > timestamp;
+    owner.serviceCount += 1;
+    if (isActive) owner.activeServiceCount += 1;
+    else owner.inactiveServiceCount += 1;
+  }
+
+  return [...owners.values()].sort((left, right) =>
+    left.ownerName.localeCompare(right.ownerName, 'es'));
+}
+
 export async function setVehicleServiceState(vehicleId, isActive, days = 30) {
   if (typeof isActive !== 'boolean') throw new Error('Service state must be active or inactive.');
   if (!Number.isInteger(days) || days < 1 || days > 365) throw new Error('Service duration must be between 1 and 365 days.');

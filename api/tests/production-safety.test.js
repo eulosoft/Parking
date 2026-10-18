@@ -239,11 +239,28 @@ test('only administrators can manually activate and deactivate vehicle services'
       type: 'MOTORCYCLE',
       plate: 'xyz789',
       ownerName: 'Test Owner',
-      ownerEmail: 'owner@example.com',
+      ownerEmail: ' OWNER@example.com ',
     }),
   });
   assert.equal(secondVehicleResponse.status, 201);
   const secondVehicleId = (await secondVehicleResponse.json()).vehicle.id;
+  const unauthenticatedOwnerReport = await fetch(
+    `http://127.0.0.1:${port}/api/admin/services/owners/report`,
+  );
+  assert.equal(unauthenticatedOwnerReport.status, 401);
+  const ownerReportResponse = await fetch(
+    `http://127.0.0.1:${port}/api/admin/services/owners/report`,
+    { headers: { Authorization: `Bearer ${adminToken}` } },
+  );
+  assert.equal(ownerReportResponse.status, 200);
+  const ownerReport = (await ownerReportResponse.json()).owners;
+  assert.equal(ownerReport.length, 1);
+  assert.equal(ownerReport[0].ownerEmail, 'owner@example.com');
+  assert.equal(ownerReport[0].vehicleCount, 2);
+  assert.equal(ownerReport[0].serviceCount, 1);
+  assert.equal(ownerReport[0].activeServiceCount, 1);
+  assert.equal(ownerReport[0].inactiveServiceCount, 0);
+
   const serviceUpdate = {
     vehicleId: secondVehicleId,
     status: 'ACTIVE',
@@ -294,6 +311,12 @@ test('only administrators can manually activate and deactivate vehicle services'
   assert.equal(editedHistoryItem.vehiclePlate, 'XYZ789');
   assert.equal(editedHistoryItem.amount, 125000);
   assert.equal(editedHistoryItem.planId, 'annual-admin');
+  const reportAfterServiceVehicleChange = (await (await fetch(
+    `http://127.0.0.1:${port}/api/admin/services/owners/report`,
+    { headers: { Authorization: `Bearer ${adminToken}` } },
+  )).json()).owners[0];
+  assert.equal(reportAfterServiceVehicleChange.vehicleCount, 2);
+  assert.equal(reportAfterServiceVehicleChange.serviceCount, 1);
 
   const restoredService = await editService({
     ...serviceUpdate,
@@ -302,6 +325,26 @@ test('only administrators can manually activate and deactivate vehicle services'
     amount: 0,
   });
   assert.equal(restoredService.status, 200);
+  const secondVehicleServiceResponse = await fetch(
+    `http://127.0.0.1:${port}/api/admin/vehicles/${secondVehicleId}/service`,
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ active: true, days: 30 }),
+    },
+  );
+  assert.equal(secondVehicleServiceResponse.status, 200);
+  const multiServiceOwnerReport = (await (await fetch(
+    `http://127.0.0.1:${port}/api/admin/services/owners/report`,
+    { headers: { Authorization: `Bearer ${adminToken}` } },
+  )).json()).owners[0];
+  assert.equal(multiServiceOwnerReport.vehicleCount, 2);
+  assert.equal(multiServiceOwnerReport.serviceCount, 2);
+  assert.equal(multiServiceOwnerReport.activeServiceCount, 2);
+  assert.equal(multiServiceOwnerReport.inactiveServiceCount, 0);
 
   const deactivate = await fetch(
     `http://127.0.0.1:${port}/api/admin/vehicles/${vehicleId}/service`,
@@ -337,7 +380,15 @@ test('only administrators can manually activate and deactivate vehicle services'
   const newService = (await reactivated.json()).service;
   assert.notEqual(newService.id, firstService.id);
   assert.equal(newService.daysRemaining, 30);
-  assert.equal((await get('SELECT COUNT(*) AS count FROM services')).count, 2);
+  assert.equal((await get('SELECT COUNT(*) AS count FROM services')).count, 3);
+  const finalOwnerReport = (await (await fetch(
+    `http://127.0.0.1:${port}/api/admin/services/owners/report`,
+    { headers: { Authorization: `Bearer ${adminToken}` } },
+  )).json()).owners[0];
+  assert.equal(finalOwnerReport.vehicleCount, 2);
+  assert.equal(finalOwnerReport.serviceCount, 3);
+  assert.equal(finalOwnerReport.activeServiceCount, 2);
+  assert.equal(finalOwnerReport.inactiveServiceCount, 1);
 
   const invalidRenewal = await fetch(
     `http://127.0.0.1:${port}/api/admin/vehicles/${vehicleId}/service/renew`,

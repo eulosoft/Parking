@@ -19,6 +19,7 @@ export const createUser = (...args) => backend.createUser(...args);
 export const getVehicleById = (...args) => backend.getVehicleById(...args);
 export const listVehiclesForAdmin = (...args) => backend.listVehiclesForAdmin(...args);
 export const listAdminServiceHistory = (...args) => backend.listAdminServiceHistory(...args);
+export const listOwnerServiceReport = (...args) => backend.listOwnerServiceReport(...args);
 export const setVehicleServiceState = (...args) => backend.setVehicleServiceState(...args);
 export const renewVehicleService = (...args) => backend.renewVehicleService(...args);
 export const updateAdminService = (...args) => backend.updateAdminService(...args);

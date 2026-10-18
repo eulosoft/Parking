@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   createVehicle,
   listAdminServiceHistory,
+  listOwnerServiceReport,
   listVehiclesForAdmin,
   renewVehicleService,
   setVehicleServiceState,
@@ -68,6 +69,10 @@ router.post('/vehicles', asyncHandler(async (req, res) => {
 
 router.get('/services/history', asyncHandler(async (req, res) => {
   return res.status(200).json({ services: await listAdminServiceHistory() });
+}));
+
+router.get('/services/owners/report', asyncHandler(async (req, res) => {
+  return res.status(200).json({ owners: await listOwnerServiceReport() });
 }));
 
 router.patch('/services/:serviceId', asyncHandler(async (req, res) => {

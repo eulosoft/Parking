@@ -17,7 +17,9 @@ fuera de Play Store.
   activar de nuevo un servicio activo mediante el endpoint de estado no lo duplica.
   Desde el historial administrativo puede consultar el detalle y editar el
   vehículo, estado, fechas, plan e importe de cada servicio; no se permite
-  asignar dos servicios activos al mismo vehículo.
+  asignar dos servicios activos al mismo vehículo. Los reportes agrupan por
+  correo normalizado del propietario y muestran vehículos, servicios totales,
+  vigentes y no vigentes.
 
 ## Desarrollo local
 
