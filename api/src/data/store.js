@@ -20,6 +20,7 @@ export const getVehicleById = (...args) => backend.getVehicleById(...args);
 export const listVehiclesForAdmin = (...args) => backend.listVehiclesForAdmin(...args);
 export const listAdminServiceHistory = (...args) => backend.listAdminServiceHistory(...args);
 export const setVehicleServiceState = (...args) => backend.setVehicleServiceState(...args);
+export const renewVehicleService = (...args) => backend.renewVehicleService(...args);
 export const createVehicle = (...args) => backend.createVehicle(...args);
 export const updateVehicle = (...args) => backend.updateVehicle(...args);
 export const listVehiclesForUser = (...args) => backend.listVehiclesForUser(...args);

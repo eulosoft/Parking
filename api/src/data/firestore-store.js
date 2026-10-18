@@ -307,6 +307,121 @@ export async function setVehicleServiceState(vehicleId, isActive, days = 30) {
   });
 }
 
+export async function renewVehicleService(vehicleId, days = 30) {
+  if (!Number.isInteger(days) || days < 1 || days > 365) {
+    throw new Error('Service duration must be between 1 and 365 days.');
+  }
+
+  const vehicleRef = db.collection('vehicles').doc(String(vehicleId));
+  const servicesRef = db.collection('services');
+  const stateRef = db.collection('serviceState').doc(String(vehicleId));
+
+  return db.runTransaction(async (transaction) => {
+    const [vehicleDoc, stateDoc] = await Promise.all([
+      transaction.get(vehicleRef),
+      transaction.get(stateRef),
+    ]);
+    if (!vehicleDoc.exists) throw new Error('Vehicle not found.');
+
+    const vehicle = toLegacyShape(vehicleDoc.id, vehicleDoc.data(), 'vehicles');
+    let active = null;
+    let latest = null;
+    if (stateDoc.exists) {
+      const state = stateDoc.data();
+      const ids = [...new Set([state.activeServiceId, state.latestServiceId].filter(Boolean))];
+      const docs = await Promise.all(ids.map((id) => transaction.get(servicesRef.doc(String(id)))));
+      const byId = new Map(docs.filter((doc) => doc.exists)
+        .map((doc) => [doc.id, toLegacyShape(doc.id, doc.data(), 'services')]));
+      active = state.activeServiceId ? byId.get(state.activeServiceId) || null : null;
+      latest = state.latestServiceId ? byId.get(state.latestServiceId) || null : null;
+      if (active?.status !== 'ACTIVE') active = null;
+    } else {
+      const [canonical, legacy] = await Promise.all([
+        transaction.get(servicesRef.where('vehicle_id', '==', vehicleId)),
+        transaction.get(servicesRef.where('vehicleId', '==', vehicleId)),
+      ]);
+      const docs = new Map([...canonical.docs, ...legacy.docs].map((doc) => [doc.id, doc]));
+      const services = [...docs.values()]
+        .map((doc) => toLegacyShape(doc.id, doc.data(), 'services'))
+        .sort(byDateStart);
+      active = services.find((service) => service.status === 'ACTIVE') || null;
+      latest = services[0] || null;
+    }
+
+    const stamp = now();
+    if (active && new Date(active.date_end) > stamp) {
+      const dateEnd = new Date(
+        new Date(active.date_end).getTime() + days * 86400000,
+      ).toISOString();
+      transaction.update(servicesRef.doc(active.id), { date_end: dateEnd });
+      if (stateDoc.exists) {
+        transaction.set(stateRef, {
+          vehicleId: String(vehicleId),
+          activeServiceId: active.id,
+          latestServiceId: active.id,
+          updatedAt: stamp.toISOString(),
+        }, { merge: true });
+      } else {
+        transaction.create(stateRef, {
+          vehicleId: String(vehicleId),
+          activeServiceId: active.id,
+          latestServiceId: active.id,
+          updatedAt: stamp.toISOString(),
+        });
+      }
+      const daysRemaining = calculateDaysRemaining(dateEnd, stamp);
+      return {
+        id: active.id,
+        vehicleId,
+        status: getServiceStatus(daysRemaining),
+        isActive: true,
+        dateStart: active.date_start,
+        dateEnd,
+        daysRemaining,
+      };
+    }
+
+    const serviceId = `service_${randomUUID()}`;
+    const dateStart = stamp.toISOString();
+    const dateEnd = new Date(stamp.getTime() + days * 86400000).toISOString();
+    const service = {
+      id: serviceId,
+      user_id: vehicle.user_id ?? vehicle.ownerId,
+      vehicle_id: vehicle.id,
+      vehicle_type: vehicle.type,
+      plan_id: 'manual_admin',
+      payment_method: 'ADMIN',
+      amount: 0,
+      status: 'ACTIVE',
+      date_start: dateStart,
+      date_end: dateEnd,
+    };
+    const expiredService = active || (latest?.status === 'ACTIVE' && new Date(latest.date_end) <= stamp
+      ? latest
+      : null);
+    if (expiredService) transaction.update(servicesRef.doc(expiredService.id), { status: 'EXPIRED' });
+    transaction.create(servicesRef.doc(serviceId), service);
+    const state = {
+      vehicleId: String(vehicleId),
+      activeServiceId: serviceId,
+      latestServiceId: serviceId,
+      updatedAt: stamp.toISOString(),
+    };
+    if (stateDoc.exists) transaction.set(stateRef, state, { merge: true });
+    else transaction.create(stateRef, state);
+
+    return {
+      id: serviceId,
+      vehicleId,
+      status: 'ACTIVE',
+      isActive: true,
+      dateStart,
+      dateEnd,
+      daysRemaining: days,
+    };
+  });
+}
+
 export async function createVehicle({ userId, type, plate, brand = '', model = '', ownerName, ownerEmail }) {
   if (!userId || !['CAR', 'MOTORCYCLE'].includes(String(type).toUpperCase())
     || !/^[A-Z0-9-]{2,12}$/i.test(plate || '') || !ownerName?.trim() || ownerName.trim().length > 120

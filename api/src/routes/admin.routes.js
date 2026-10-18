@@ -3,6 +3,7 @@ import {
   createVehicle,
   listAdminServiceHistory,
   listVehiclesForAdmin,
+  renewVehicleService,
   setVehicleServiceState,
 } from '../data/store.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
@@ -66,6 +67,30 @@ router.post('/vehicles', asyncHandler(async (req, res) => {
 
 router.get('/services/history', asyncHandler(async (req, res) => {
   return res.status(200).json({ services: await listAdminServiceHistory() });
+}));
+
+router.post('/vehicles/:vehicleId/service/renew', asyncHandler(async (req, res) => {
+  const { days = 30 } =
+    req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(req.params.vehicleId)) {
+    return res.status(400).json({ message: 'A valid vehicle ID is required.' });
+  }
+  if (!Number.isInteger(days) || days < 1 || days > 365) {
+    return res.status(400).json({ message: 'The service duration must be between 1 and 365 days.' });
+  }
+
+  try {
+    const service = await renewVehicleService(req.params.vehicleId, days);
+    return res.status(200).json({ service });
+  } catch (error) {
+    if (error.message === 'Vehicle not found.') {
+      return res.status(404).json({ message: error.message });
+    }
+    if (error.code === 'aborted' || error.code === 10) {
+      return res.status(409).json({ message: 'Service state changed concurrently; retry the request.' });
+    }
+    throw error;
+  }
 }));
 
 router.put('/vehicles/:vehicleId/service', asyncHandler(async (req, res) => {

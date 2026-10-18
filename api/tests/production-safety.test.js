@@ -161,6 +161,16 @@ test('only administrators can manually activate and deactivate vehicle services'
   });
   assert.equal(forbidden.status, 403);
 
+  const forbiddenRenewal = await fetch(
+    `http://127.0.0.1:${port}/api/admin/vehicles/${vehicleId}/service/renew`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${nonAdminToken}` },
+      body: JSON.stringify({ days: 30 }),
+    },
+  );
+  assert.equal(forbiddenRenewal.status, 403);
+
   const activate = () => fetch(
     `http://127.0.0.1:${port}/api/admin/vehicles/${vehicleId}/service`,
     {
@@ -178,6 +188,31 @@ test('only administrators can manually activate and deactivate vehicle services'
   const firstService = (await firstActivation.json()).service;
   assert.equal(firstService.isActive, true);
   assert.equal(firstService.daysRemaining, 30);
+
+  const renew = () => fetch(
+    `http://127.0.0.1:${port}/api/admin/vehicles/${vehicleId}/service/renew`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ days: 30 }),
+    },
+  );
+
+  const renewed = await renew();
+  assert.equal(renewed.status, 200);
+  const renewedService = (await renewed.json()).service;
+  assert.equal(renewedService.id, firstService.id);
+  assert.equal(
+    new Date(renewedService.dateEnd).getTime() - new Date(firstService.dateEnd).getTime(),
+    30 * 24 * 60 * 60 * 1000,
+  );
+  assert.equal(
+    (await get('SELECT date_end FROM services WHERE id = ?', [firstService.id])).date_end,
+    renewedService.dateEnd,
+  );
 
   const repeatedActivation = await activate();
   assert.equal(repeatedActivation.status, 200);
@@ -221,6 +256,26 @@ test('only administrators can manually activate and deactivate vehicle services'
   assert.equal(repeatedDeactivation.status, 200);
   assert.equal((await repeatedDeactivation.json()).service.id, firstService.id);
 
+  const reactivated = await renew();
+  assert.equal(reactivated.status, 200);
+  const newService = (await reactivated.json()).service;
+  assert.notEqual(newService.id, firstService.id);
+  assert.equal(newService.daysRemaining, 30);
+  assert.equal((await get('SELECT COUNT(*) AS count FROM services')).count, 2);
+
+  const invalidRenewal = await fetch(
+    `http://127.0.0.1:${port}/api/admin/vehicles/${vehicleId}/service/renew`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ days: 366 }),
+    },
+  );
+  assert.equal(invalidRenewal.status, 400);
+
   const invalidDuration = await fetch(
     `http://127.0.0.1:${port}/api/admin/vehicles/${vehicleId}/service`,
     {
@@ -236,6 +291,7 @@ test('only administrators can manually activate and deactivate vehicle services'
 });
 
 test('service purchases cannot activate parking without a configured payment provider', async () => {
+  const servicesBeforePurchase = (await get('SELECT COUNT(*) AS count FROM services')).count;
   const response = await fetch(`http://127.0.0.1:${port}/api/services/purchase`, {
     method: 'POST',
     headers: {
@@ -252,7 +308,10 @@ test('service purchases cannot activate parking without a configured payment pro
 
   assert.equal(response.status, 503);
   assert.equal((await response.json()).code, 'PAYMENTS_NOT_CONFIGURED');
-  assert.equal((await get('SELECT COUNT(*) AS count FROM services')).count, 1);
+  assert.equal(
+    (await get('SELECT COUNT(*) AS count FROM services')).count,
+    servicesBeforePurchase,
+  );
 });
 
 test('login requests are rate limited after ten attempts from one IP', async () => {

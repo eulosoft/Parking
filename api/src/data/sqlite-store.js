@@ -290,6 +290,53 @@ export async function setVehicleServiceState(vehicleId, isActive, days = 30) {
   };
 }
 
+export async function renewVehicleService(vehicleId, days = 30) {
+  if (!Number.isInteger(days) || days < 1 || days > 365) {
+    throw new Error('Service duration must be between 1 and 365 days.');
+  }
+
+  const vehicle = getVehicleById(vehicleId);
+  if (!vehicle) {
+    throw new Error('Vehicle not found.');
+  }
+
+  const timestamp = now();
+  const existingActiveService = store.services
+    .filter((service) => service.vehicle_id === vehicleId && service.status === 'ACTIVE')
+    .sort((left, right) => new Date(right.date_start) - new Date(left.date_start))[0];
+
+  if (!existingActiveService || new Date(existingActiveService.date_end) <= timestamp) {
+    return setVehicleServiceState(vehicleId, true, days);
+  }
+
+  const dateEnd = new Date(
+    new Date(existingActiveService.date_end).getTime() + days * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    run('UPDATE services SET date_end = ? WHERE id = ?', [dateEnd, existingActiveService.id]);
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+
+  existingActiveService.date_end = dateEnd;
+  await mirrorDocument('services', existingActiveService.id, { dateEnd });
+  const daysRemaining = calculateDaysRemaining(dateEnd, timestamp);
+
+  return {
+    id: existingActiveService.id,
+    vehicleId,
+    status: getServiceStatus(daysRemaining),
+    isActive: true,
+    dateStart: existingActiveService.date_start,
+    dateEnd,
+    daysRemaining,
+  };
+}
+
 export async function createVehicle({
   userId,
   type,

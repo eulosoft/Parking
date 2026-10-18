@@ -13,7 +13,8 @@ fuera de Play Store.
   persistente en producción sobre Vercel.
 - La API es la fuente de verdad para la sesión, vehículos y servicios. El
   administrador puede activar un servicio hasta 365 días (la app ofrece 30 por
-  defecto); repetir la activación de un servicio ya activo no crea uno nuevo.
+  defecto). La opción de renovar extiende 30 días el vencimiento vigente;
+  activar de nuevo un servicio activo mediante el endpoint de estado no lo duplica.
 
 ## Desarrollo local
 
